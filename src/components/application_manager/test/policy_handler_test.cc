@@ -1671,23 +1671,61 @@ TEST_F(PolicyHandlerTest, GetAppIdForSending_ExpectReturnAnyAppInNone) {
   EXPECT_EQ(app_in_none_id_1 || app_in_none_id_2, app_id);
 }
 
-TEST_F(PolicyHandlerTest, SendMessageToSDK) {
-  // Precondition
+TEST_F(PolicyHandlerTest,
+       SendMessageToSDK_SuitableAppPresent_ExpectedNotificationSending) {
   BinaryMessage msg;
   const std::string url = "test_url";
   EnablePolicyAndPolicyManagerMock();
   test_app.insert(mock_app_);
-  // Check expectations for get app id
-  GetAppIDForSending();
-  // Expectations
+
   EXPECT_CALL(app_manager_, application(kAppId_))
       .WillRepeatedly(Return(mock_app_));
-  EXPECT_CALL(*mock_app_, policy_app_id()).WillOnce(Return(kPolicyAppId_));
+  EXPECT_CALL(*mock_app_, app_id()).WillRepeatedly(Return(kAppId_));
+  EXPECT_CALL(*mock_app_, policy_app_id())
+      .WillRepeatedly(Return(kPolicyAppId_));
+  EXPECT_CALL(*mock_app_, hmi_level())
+      .WillRepeatedly(Return(mobile_apis::HMILevel::HMI_FULL));
+  EXPECT_CALL(*mock_app_, IsRegistered()).WillRepeatedly(Return(true));
 
+  const connection_handler::DeviceHandle test_device_id = 1u;
+  EXPECT_CALL(*mock_app_, device()).WillRepeatedly(Return(test_device_id));
+  EXPECT_CALL(*mock_policy_manager_, GetUserConsentForDevice(_))
+      .WillOnce(Return(kDeviceAllowed));
+
+  // Act
   EXPECT_CALL(mock_message_helper_,
               SendPolicySnapshotNotification(kAppId_, msg, url, _));
-  // Act
   EXPECT_TRUE(policy_handler_.SendMessageToSDK(msg, url));
+}
+
+TEST_F(PolicyHandlerTest,
+       SendMessageToSDK_NoSuitableApp_ExpectedNotificationNotSent) {
+  BinaryMessage msg;
+  const std::string url = "test_url";
+  EnablePolicyAndPolicyManagerMock();
+  test_app.insert(mock_app_);
+
+  EXPECT_CALL(app_manager_, application(kAppId_))
+      .WillRepeatedly(Return(mock_app_));
+  EXPECT_CALL(*mock_app_, app_id()).WillRepeatedly(Return(kAppId_));
+  EXPECT_CALL(*mock_app_, policy_app_id())
+      .WillRepeatedly(Return(kPolicyAppId_));
+  EXPECT_CALL(*mock_app_, hmi_level())
+      .WillRepeatedly(Return(mobile_apis::HMILevel::HMI_NONE));
+  EXPECT_CALL(*mock_app_, IsRegistered()).WillRepeatedly(Return(true));
+
+  const connection_handler::DeviceHandle test_device_id = 1u;
+  EXPECT_CALL(*mock_app_, device()).WillRepeatedly(Return(test_device_id));
+  EXPECT_CALL(*mock_policy_manager_, GetUserConsentForDevice(_))
+      .WillOnce(Return(kDeviceDisallowed));
+
+  // Expected to get 0 as application id so SDL does not have valid application
+  // with such id
+  EXPECT_CALL(app_manager_, application(0))
+      .WillOnce(Return(
+          utils::SharedPtr<application_manager_test::MockApplication>()));
+
+  EXPECT_FALSE(policy_handler_.SendMessageToSDK(msg, url));
 }
 
 TEST_F(PolicyHandlerTest, CanUpdate) {
