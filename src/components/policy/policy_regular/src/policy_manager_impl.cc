@@ -313,10 +313,10 @@ void PolicyManagerImpl::StartPTExchange() {
     if (update_status_manager_.IsUpdateRequired()) {
       if (RequestPTUpdate() && !timer_retry_sequence_.is_running()) {
         // Start retry sequency
-        const int timeout_sec = NextRetryTimeout();
+        const uint32_t timeout_msec = NextRetryTimeout();
         LOG4CXX_DEBUG(logger_,
-                      "Start retry sequence timeout = " << timeout_sec);
-        timer_retry_sequence_.Start(timeout_sec, timer::kPeriodic);
+                      "Start retry sequence timeout = " << timeout_msec);
+        timer_retry_sequence_.Start(timeout_msec, timer::kPeriodic);
       }
     }
   }
@@ -772,17 +772,22 @@ uint32_t PolicyManagerImpl::NextRetryTimeout() {
   LOG4CXX_DEBUG(logger_, "Index: " << retry_sequence_index_);
   uint32_t next = 0u;
   if (retry_sequence_seconds_.empty() ||
-      retry_sequence_index_ >= retry_sequence_seconds_.size()) {
+      retry_sequence_index_ > retry_sequence_seconds_.size()) {
     return next;
   }
 
-  ++retry_sequence_index_;
+  if (0 == retry_sequence_index_) {
+    ++retry_sequence_index_;
+    // Return miliseconds
+    return retry_sequence_timeout_;
+  }
 
   for (uint32_t i = 0u; i < retry_sequence_index_; ++i) {
-    next += retry_sequence_seconds_[i];
-    // According to requirement APPLINK-18244
+    next += retry_sequence_seconds_[i] *
+            date_time::DateTime::MILLISECONDS_IN_SECOND;
     next += retry_sequence_timeout_;
   }
+  ++retry_sequence_index_;
 
   // Return miliseconds
   return next;
@@ -815,10 +820,7 @@ void PolicyManagerImpl::OnExceededTimeout() {
 }
 
 void PolicyManagerImpl::OnUpdateStarted() {
-  uint32_t update_timeout = TimeoutExchangeMSec();
-  LOG4CXX_DEBUG(logger_,
-                "Update timeout will be set to (milisec): " << update_timeout);
-  update_status_manager_.OnUpdateSentOut(update_timeout);
+  update_status_manager_.OnUpdateSentOut();
   cache_->SaveUpdateRequired(true);
 }
 
@@ -1024,15 +1026,17 @@ void PolicyManagerImpl::set_cache_manager(
 
 void PolicyManagerImpl::RetrySequence() {
   LOG4CXX_INFO(logger_, "Start new retry sequence");
-  RequestPTUpdate();
+  update_status_manager_.OnUpdateTimeoutOccurs();
 
-  uint32_t timeout = NextRetryTimeout();
-
-  if (!timeout && timer_retry_sequence_.is_running()) {
+  const uint32_t timeout_msec = NextRetryTimeout();
+  LOG4CXX_DEBUG(logger_, "New retry sequence timeout = " << timeout_msec);
+  if (!timeout_msec && timer_retry_sequence_.is_running()) {
     timer_retry_sequence_.Stop();
     return;
   }
-  timer_retry_sequence_.Start(timeout, timer::kPeriodic);
+
+  RequestPTUpdate();
+  timer_retry_sequence_.Start(timeout_msec, timer::kPeriodic);
 }
 
 }  //  namespace policy
