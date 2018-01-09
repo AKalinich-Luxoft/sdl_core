@@ -309,6 +309,11 @@ void ProtocolHandlerImpl::SendStartSessionAck(
   raw_ford_messages_to_mobile_.PostMessage(
       impl::RawFordMessageToMobile(ptr, false));
 
+  const uint32_t connection_key =
+      session_observer_.KeyFromPair(connection_id, session_id);
+  connection_handler_.BindProtocolVersionWithSession(connection_key,
+                                                     ack_protocol_version);
+
   LOG4CXX_DEBUG(logger_,
                 "SendStartSessionAck() for connection "
                     << connection_id << " for service_type "
@@ -1689,17 +1694,25 @@ void ProtocolHandlerImpl::NotifySessionStartedResult(
 RESULT_CODE ProtocolHandlerImpl::HandleControlMessageHeartBeat(
     const ProtocolPacket& packet) {
   const ConnectionID connection_id = packet.connection_id();
+  const uint32_t session_id = packet.session_id();
   LOG4CXX_DEBUG(logger_,
                 "Sending heart beat acknowledgment for connection "
-                    << connection_id);
+                    << connection_id << " session " << session_id);
   uint8_t protocol_version;
   if (session_observer_.ProtocolVersionUsed(
-          connection_id, packet.session_id(), protocol_version)) {
+          connection_id, session_id, protocol_version)) {
     // TODO(EZamakhov): investigate message_id for HeartBeatAck
     if (protocol_version >= PROTOCOL_VERSION_3 &&
         protocol_version <= PROTOCOL_VERSION_5) {
-      return SendHeartBeatAck(
-          connection_id, packet.session_id(), packet.message_id());
+      const uint32_t connection_key =
+          session_observer_.KeyFromPair(connection_id, session_id);
+      if (!connection_handler_.IsSessionHeartbeatTracked(connection_key)) {
+        LOG4CXX_DEBUG(logger_,
+                      "Session heartbeat tracking is not started. "
+                          << "Starting it for session " << session_id);
+        connection_handler_.StartSessionHeartBeat(connection_key);
+      }
+      return SendHeartBeatAck(connection_id, session_id, packet.message_id());
     } else {
       LOG4CXX_WARN(logger_, "HeartBeat is not supported");
       return RESULT_HEARTBEAT_IS_NOT_SUPPORTED;
