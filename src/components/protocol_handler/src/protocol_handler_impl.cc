@@ -1609,11 +1609,8 @@ void ProtocolHandlerImpl::NotifySessionStarted(
     }
 
     security_manager::SSLContext* ssl_context =
-        is_certificate_expired
-            ? NULL
-            : security_manager_->CreateSSLContext(
-                  connection_key,
-                  security_manager::SecurityManager::kUseExisting);
+        security_manager_->CreateSSLContext(
+            connection_key, security_manager::SecurityManager::kUseExisting);
     if (!ssl_context) {
       const std::string error("CreateSSLContext failed");
       LOG4CXX_ERROR(logger_, error);

@@ -214,7 +214,7 @@ void SecurityManagerImpl::ResumeHandshake(uint32_t connection_key) {
   }
 
   ssl_context->ResetConnection();
-  if (!ssl_context->HasCertificate()) {
+  if (!waiting_for_certificate_ && !ssl_context->HasCertificate()) {
     NotifyListenersOnHandshakeDone(connection_key,
                                    SSLContext::Handshake_Result_Fail);
     return;
