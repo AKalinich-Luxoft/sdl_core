@@ -34,6 +34,10 @@
 #define SRC_COMPONENTS_APPLICATION_MANAGER_INCLUDE_APPLICATION_MANAGER_HELP_PROMPT_MANAGER_IMPL_H_
 
 #include "application_manager/help_prompt_manager.h"
+
+#include <algorithm>
+#include <vector>
+
 #include "utils/lock.h"
 #include "utils/timer.h"
 
@@ -51,9 +55,10 @@ class ApplicationManager;
 class HelpPromptManagerImpl : public HelpPromptManager {
  public:
   /**
-   * @brief Continer for buffering VR help commands
+   * @brief Container for buffering VR help commands
   */
-  typedef std::map<uint32_t, smart_objects::SmartObjectSPtr> VRCommandsMap;
+  typedef std::pair<uint32_t, smart_objects::SmartObjectSPtr> VRCommandPair;
+  typedef std::vector<VRCommandPair> VRCommandPairs;
 
   /**
    * @brief Class constructor
@@ -159,12 +164,17 @@ class HelpPromptManagerImpl : public HelpPromptManager {
    */
   void SetSendingType(const smart_objects::SmartObject& msg);
 
+  /**
+   * @brief Get the total count of commands in VRCommand pairs
+   * @return total count of commands
+   */
+  size_t GetCommandsCount() const;
+
   Application& app_;
   ApplicationManager& app_manager_;
-  VRCommandsMap vr_commands_;
+  VRCommandPairs vr_commands_;
   sync_primitives::Lock vr_commands_lock_;
   SendingType sending_type_;
-  std::size_t count_vr_commands_;
   bool is_tts_send_;
   bool is_ui_send_;
 };
