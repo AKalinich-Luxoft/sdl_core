@@ -42,17 +42,20 @@
 #include "utils/gen_hash.h"
 #include "utils/helpers.h"
 
-#define INVALID_IMG_WARNING_INFO "Requested image(s) not found."
-namespace sdl_rpc_plugin {
-using namespace application_manager;
+const char* kInvalidImageWarningInfo = "Requested image(s) not found.";
 
+namespace sdl_rpc_plugin {
 namespace commands {
 
+namespace am = application_manager;
+namespace strings = am::strings;
+namespace event_engine = am::event_engine;
+
 CreateInteractionChoiceSetRequest::CreateInteractionChoiceSetRequest(
-    const application_manager::commands::MessageSharedPtr& message,
-    ApplicationManager& application_manager,
-    rpc_service::RPCService& rpc_service,
-    HMICapabilities& hmi_capabilities,
+    const am::commands::MessageSharedPtr& message,
+    am::ApplicationManager& application_manager,
+    am::rpc_service::RPCService& rpc_service,
+    am::HMICapabilities& hmi_capabilities,
     policy::PolicyHandlerInterface& policy_handler)
     : CommandRequestImpl(message,
                          application_manager,
@@ -72,7 +75,8 @@ CreateInteractionChoiceSetRequest::~CreateInteractionChoiceSetRequest() {
 void CreateInteractionChoiceSetRequest::Run() {
   LOG4CXX_AUTO_TRACE(logger_);
   using namespace mobile_apis;
-  ApplicationSharedPtr app = application_manager_.application(connection_key());
+  am::ApplicationSharedPtr app =
+      application_manager_.application(connection_key());
 
   if (!app) {
     LOG4CXX_ERROR(logger_, "NULL pointer");
@@ -87,7 +91,7 @@ void CreateInteractionChoiceSetRequest::Run() {
     Result::eType verification_result_secondary_image = Result::SUCCESS;
     if ((*message_)[strings::msg_params][strings::choice_set][i].keyExists(
             strings::image)) {
-      verification_result_image = MessageHelper::VerifyImage(
+      verification_result_image = am::MessageHelper::VerifyImage(
           (*message_)[strings::msg_params][strings::choice_set][i]
                      [strings::image],
           app,
@@ -95,7 +99,7 @@ void CreateInteractionChoiceSetRequest::Run() {
     }
     if ((*message_)[strings::msg_params][strings::choice_set][i].keyExists(
             strings::secondary_image)) {
-      verification_result_secondary_image = MessageHelper::VerifyImage(
+      verification_result_secondary_image = am::MessageHelper::VerifyImage(
           (*message_)[strings::msg_params][strings::choice_set][i]
                      [strings::secondary_image],
           app,
@@ -106,10 +110,10 @@ void CreateInteractionChoiceSetRequest::Run() {
       LOG4CXX_ERROR(logger_, "Image verification failed.");
       SendResponse(false, Result::INVALID_DATA);
       return;
-    } else  if (verification_result_image == Result::WARNINGS ||
-        verification_result_secondary_image == Result::WARNINGS) {
-   	should_send_warnings = true;
-	break;
+    } else if (verification_result_image == Result::WARNINGS ||
+               verification_result_secondary_image == Result::WARNINGS) {
+      should_send_warnings = true;
+      break;
     }
   }
 
@@ -136,7 +140,7 @@ void CreateInteractionChoiceSetRequest::Run() {
 }
 
 mobile_apis::Result::eType CreateInteractionChoiceSetRequest::CheckChoiceSet(
-    ApplicationConstSharedPtr app) {
+    am::ApplicationConstSharedPtr app) {
   using namespace smart_objects;
   LOG4CXX_AUTO_TRACE(logger_);
 
@@ -301,7 +305,7 @@ void CreateInteractionChoiceSetRequest::SendVRAddCommandRequests(
 
     sync_primitives::AutoLock commands_lock(vr_commands_lock_);
     const uint32_t vr_cmd_id = msg_params[strings::cmd_id].asUInt();
-    StartAwaitForInterface(HmiInterfaces::HMI_INTERFACE_VR);
+    StartAwaitForInterface(am::HmiInterfaces::HMI_INTERFACE_VR);
     const uint32_t vr_corr_id =
         SendHMIRequest(hmi_apis::FunctionID::VR_AddCommand, &msg_params, true);
 
@@ -365,13 +369,13 @@ void CreateInteractionChoiceSetRequest::on_event(
 
   const smart_objects::SmartObject& message = event.smart_object();
   const Common_Result::eType result = static_cast<Common_Result::eType>(
-      message[strings::params][hmi_response::code].asInt());
+      message[strings::params][am::hmi_response::code].asInt());
   const bool is_no_error = Compare<Common_Result::eType, EQ, ONE>(
       result, Common_Result::SUCCESS, Common_Result::WARNINGS);
   uint32_t corr_id = static_cast<uint32_t>(
       message[strings::params][strings::correlation_id].asUInt());
   if (event.id() == hmi_apis::FunctionID::VR_AddCommand) {
-    EndAwaitForInterface(HmiInterfaces::HMI_INTERFACE_VR);
+    EndAwaitForInterface(am::HmiInterfaces::HMI_INTERFACE_VR);
     {
       sync_primitives::AutoLock commands_lock(vr_commands_lock_);
       if (is_no_error) {
@@ -411,7 +415,7 @@ bool CreateInteractionChoiceSetRequest::Init() {
 void CreateInteractionChoiceSetRequest::DeleteChoices() {
   LOG4CXX_AUTO_TRACE(logger_);
 
-  ApplicationSharedPtr application =
+  am::ApplicationSharedPtr application =
       application_manager_.application(connection_key());
   if (!application) {
     LOG4CXX_ERROR(logger_, "NULL pointer");
@@ -442,7 +446,7 @@ void CreateInteractionChoiceSetRequest::OnAllHMIResponsesReceived() {
   LOG4CXX_AUTO_TRACE(logger_);
 
   if (!error_from_hmi_ && should_send_warnings) {
-    SendResponse(true, mobile_apis::Result::WARNINGS,INVALID_IMG_WARNING_INFO);
+    SendResponse(true, mobile_apis::Result::WARNINGS, kInvalidImageWarningInfo);
   } else if (!error_from_hmi_) {
     SendResponse(true, mobile_apis::Result::SUCCESS);
   } else {
