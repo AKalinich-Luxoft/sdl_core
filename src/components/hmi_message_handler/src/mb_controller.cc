@@ -62,6 +62,8 @@ CMessageBrokerController::~CMessageBrokerController() {
 }
 
 bool CMessageBrokerController::StartListener() {
+  LOG4CXX_AUTO_TRACE(mb_logger_);
+
   boost::system::error_code error;
   acceptor_.open(endpoint_.protocol(), error);
   if (error) {
@@ -92,6 +94,7 @@ bool CMessageBrokerController::StartListener() {
 }
 
 bool CMessageBrokerController::Run() {
+  LOG4CXX_AUTO_TRACE(mb_logger_);
   if (acceptor_.is_open() && !shutdown_) {
     acceptor_.async_accept(socket_,
                            std::bind(&CMessageBrokerController::StartSession,
@@ -113,6 +116,7 @@ void CMessageBrokerController::WaitForConnection() {
 }
 
 void CMessageBrokerController::StartSession(boost::system::error_code ec) {
+  LOG4CXX_AUTO_TRACE(mb_logger_);
   if (ec) {
     std::string str_err = "ErrorMessage: " + ec.message();
     LOG4CXX_ERROR(mb_logger_, str_err);
@@ -128,6 +132,7 @@ void CMessageBrokerController::StartSession(boost::system::error_code ec) {
 
   mConnectionListLock.Acquire();
   mConnectionList.push_back(ws_ptr);
+  LOG4CXX_DEBUG(mb_logger_, "New connection: " << ws_ptr);
   mConnectionListLock.Release();
 
   WaitForConnection();
@@ -236,6 +241,28 @@ void CMessageBrokerController::suspendReceivingThread() {
     std::string str_err = "ErrorMessage Close: " + ec.message();
   }
   ioc_.stop();
+}
+
+void CMessageBrokerController::OnLowVoltage() {
+  LOG4CXX_AUTO_TRACE(mb_logger_);
+  mConnectionListLock.Acquire();
+  std::vector<std::shared_ptr<hmi_message_handler::WebsocketSession> >::iterator
+      it;
+  for (it = mConnectionList.begin(); it != mConnectionList.end(); ++it) {
+    (*it)->OnLowVoltage();
+  }
+  mConnectionListLock.Release();
+}
+
+void CMessageBrokerController::OnWakeUp() {
+  LOG4CXX_AUTO_TRACE(mb_logger_);
+  mConnectionListLock.Acquire();
+  std::vector<std::shared_ptr<hmi_message_handler::WebsocketSession> >::iterator
+      it;
+  for (it = mConnectionList.begin(); it != mConnectionList.end(); ++it) {
+    (*it)->OnWakeUp();
+  }
+  mConnectionListLock.Release();
 }
 
 void CMessageBrokerController::exitReceivingThread() {
@@ -360,8 +387,8 @@ bool CMessageBrokerController::addSubscriber(WebsocketSession* ws_session,
   bool result = true;
   sync_primitives::AutoLock lock(mSubscribersListLock);
   std::pair<std::multimap<std::string, WebsocketSession*>::iterator,
-            std::multimap<std::string, WebsocketSession*>::iterator>
-      p = mSubscribersList.equal_range(name);
+            std::multimap<std::string, WebsocketSession*>::iterator> p =
+      mSubscribersList.equal_range(name);
   if (p.first != p.second) {
     std::multimap<std::string, WebsocketSession*>::iterator itr;
     for (itr = p.first; itr != p.second; itr++) {
@@ -382,8 +409,8 @@ void CMessageBrokerController::deleteSubscriber(WebsocketSession* ws,
                                                 std::string name) {
   sync_primitives::AutoLock lock(mSubscribersListLock);
   std::pair<std::multimap<std::string, WebsocketSession*>::iterator,
-            std::multimap<std::string, WebsocketSession*>::iterator>
-      p = mSubscribersList.equal_range(name);
+            std::multimap<std::string, WebsocketSession*>::iterator> p =
+      mSubscribersList.equal_range(name);
   if (p.first != p.second) {
     std::multimap<std::string, WebsocketSession*>::iterator itr;
     for (itr = p.first; itr != p.second;) {
@@ -403,8 +430,8 @@ int CMessageBrokerController::getSubscribersFd(
 
   sync_primitives::AutoLock lock(mSubscribersListLock);
   std::pair<std::multimap<std::string, WebsocketSession*>::iterator,
-            std::multimap<std::string, WebsocketSession*>::iterator>
-      p = mSubscribersList.equal_range(name);
+            std::multimap<std::string, WebsocketSession*>::iterator> p =
+      mSubscribersList.equal_range(name);
   if (p.first != p.second) {
     std::multimap<std::string, WebsocketSession*>::iterator itr;
     for (itr = p.first; itr != p.second; itr++) {

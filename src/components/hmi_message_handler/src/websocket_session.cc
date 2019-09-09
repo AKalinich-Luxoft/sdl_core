@@ -31,7 +31,14 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "hmi_message_handler/websocket_session.h"
 #include <unistd.h>
 #include "hmi_message_handler/mb_controller.h"
+#include "utils/timer_task_impl.h"
+
 using namespace boost::beast::websocket;
+
+namespace {
+const uint32_t kLowVoltageResetTimeout = 2u;
+}
+
 namespace hmi_message_handler {
 
 WebsocketSession::WebsocketSession(boost::asio::ip::tcp::socket socket,
@@ -40,12 +47,17 @@ WebsocketSession::WebsocketSession(boost::asio::ip::tcp::socket socket,
     , strand_(ws_.get_executor())
     , controller_(controller)
     , stop(false)
+    , is_low_voltage_(false)
     , m_receivingBuffer("")
     , mControllersIdStart(-1)
     , mControllersIdCurrent(0)
     , shutdown_(false)
     , thread_delegate_(new LoopThreadDelegate(&message_queue_, this))
-    , thread_(threads::CreateThread("WS Async Send", thread_delegate_)) {
+    , thread_(threads::CreateThread("WS Async Send", thread_delegate_))
+    , reset_low_voltage_flag_timer_(
+          "Reset LowVoltage Timer",
+          new timer::TimerTaskImpl<WebsocketSession>(
+              this, &WebsocketSession::ResetLowVoltageFlag)) {
   thread_->start(threads::ThreadOptions());
 }
 
@@ -114,6 +126,7 @@ void WebsocketSession::sendJsonMessage(Json::Value& message) {
 
 void WebsocketSession::Read(boost::system::error_code ec,
                             std::size_t bytes_transferred) {
+  LOG4CXX_AUTO_TRACE(ws_logger_);
   boost::ignore_unused(bytes_transferred);
   if (ec) {
     std::string str_err = "ErrorMessage: " + ec.message();
@@ -122,6 +135,18 @@ void WebsocketSession::Read(boost::system::error_code ec,
     thread_delegate_->SetShutdown();
     controller_->deleteController(this);
     buffer_.consume(buffer_.size());
+    return;
+  }
+
+  if (is_low_voltage_) {
+    std::string data = boost::beast::buffers_to_string(buffer_.data());
+    LOG4CXX_WARN(ws_logger_,
+                 "Ignored "
+                     << buffer_.size()
+                     << " bytes from buffer due to LOW VOLTAGE: " << data);
+    buffer_.consume(buffer_.size());
+    OnWakeUp();
+    Recv(ec);
     return;
   }
 
@@ -149,6 +174,15 @@ void WebsocketSession::Read(boost::system::error_code ec,
   Recv(ec);
 }
 
+void WebsocketSession::OnLowVoltage() {
+  is_low_voltage_ = true;
+}
+
+void WebsocketSession::OnWakeUp() {
+  reset_low_voltage_flag_timer_.Start(kLowVoltageResetTimeout,
+                                      timer::kSingleShot);
+}
+
 std::string WebsocketSession::GetComponentName(std::string& method) {
   std::string return_string = "";
   if (method != "") {
@@ -158,6 +192,10 @@ std::string WebsocketSession::GetComponentName(std::string& method) {
     }
   }
   return return_string;
+}
+
+void WebsocketSession::ResetLowVoltageFlag() {
+  is_low_voltage_ = false;
 }
 
 void WebsocketSession::onMessageReceived(Json::Value message) {

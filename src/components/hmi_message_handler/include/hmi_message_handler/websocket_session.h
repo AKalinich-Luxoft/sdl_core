@@ -56,6 +56,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "utils/message_queue.h"
 #include "utils/threads/message_loop_thread.h"
 #include "utils/threads/thread.h"
+#include "utils/timer.h"
 
 using namespace boost::beast::websocket;
 using ::utils::MessageQueue;
@@ -120,6 +121,10 @@ class WebsocketSession : public std::enable_shared_from_this<WebsocketSession> {
 
   void Read(boost::system::error_code ec, std::size_t bytes_transferred);
 
+  void OnLowVoltage();
+
+  void OnWakeUp();
+
   int getNextMessageId();
 
   void prepareMessage(Json::Value& root);
@@ -152,9 +157,12 @@ class WebsocketSession : public std::enable_shared_from_this<WebsocketSession> {
 
  protected:
   std::atomic_bool stop;
+  std::atomic_bool is_low_voltage_;
 
  private:
   void onMessageReceived(Json::Value message);
+
+  void ResetLowVoltageFlag();
 
   std::map<std::string, std::string> mWaitResponseQueue;
 
@@ -200,6 +208,8 @@ class WebsocketSession : public std::enable_shared_from_this<WebsocketSession> {
 
   LoopThreadDelegate* thread_delegate_;
   threads::Thread* thread_;
+
+  timer::Timer reset_low_voltage_flag_timer_;
 };
 
 }  // namespace hmi_message_handler
