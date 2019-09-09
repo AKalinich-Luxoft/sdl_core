@@ -215,6 +215,29 @@ bool CMessageBrokerController::Connect() {
   return true;
 }
 
+void CMessageBrokerController::suspendReceivingThread() {
+  mConnectionListLock.Acquire();
+  std::vector<std::shared_ptr<hmi_message_handler::WebsocketSession> >::iterator
+      it;
+  for (it = mConnectionList.begin(); it != mConnectionList.end();) {
+    it = mConnectionList.erase(it);
+  }
+  mConnectionListLock.Release();
+
+  boost::system::error_code ec;
+  socket_.close();
+  acceptor_.cancel(ec);
+  if (ec) {
+    std::string str_err = "ErrorMessage Cancel: " + ec.message();
+    LOG4CXX_ERROR(mb_logger_, str_err);
+  }
+  acceptor_.close(ec);
+  if (ec) {
+    std::string str_err = "ErrorMessage Close: " + ec.message();
+  }
+  ioc_.stop();
+}
+
 void CMessageBrokerController::exitReceivingThread() {
   shutdown_ = true;
   mConnectionListLock.Acquire();
